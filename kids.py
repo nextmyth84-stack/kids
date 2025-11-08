@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
-# 🩵 Cinnamo World v4.5 — 2D Dialogue Edition + TTS + 캐릭터 크기 조절
-# 아이들이 시나모롤 감성의 강아지 캐릭터와 음성으로 대화하며 배우는 감정 놀이
+# 🩵 Cinnamo World v4.6 — Personalized Edition (도아 맞춤 TTS)
+# 시나모롤 감성의 귀여운 강아지가 도아에게 말을 걸고 반응하는 교육용 감정 대화 놀이
 
 import os, json, tempfile
 from io import BytesIO
@@ -15,6 +15,7 @@ from streamlit_drawable_canvas import st_canvas
 st.set_page_config(page_title="Cinnamo World", layout="centered")
 client = OpenAI(api_key=st.secrets.get("OPENAI_API_KEY", ""))
 
+CHILD_NAME = "도아"   # 🧸 아이 이름
 DATA_DIR = "data"
 ASSETS_DIR = "assets"
 os.makedirs(DATA_DIR, exist_ok=True)
@@ -68,9 +69,9 @@ def transcribe_audio(bytes_wav: bytes) -> str:
         os.remove(path)
 
 def cinnamo_feedback(scene: str, utter: str) -> str:
-    sys = ("너는 7세 어린이의 친구인 귀여운 강아지 캐릭터야. "
-           "아이의 말을 듣고 다정하게 한 문장으로 반응해줘. "
-           "시나모롤처럼 귀엽고 짧게, 존댓말로 답해줘.")
+    sys = (f"너는 7세 어린이 '{CHILD_NAME}'의 친구인 귀여운 강아지 캐릭터야. "
+           "아이의 말을 듣고 따뜻하게 한 문장으로 반응해줘. "
+           "출력은 항상 '도아야, ~'로 시작하고, 시나모롤처럼 짧고 다정하게 말해줘.")
     user = f"상황: {scene}\n아이가 한 말: {utter}"
     rsp = client.responses.create(model="gpt-5-mini",
                                   input=[{"role":"system","content":sys},{"role":"user","content":user}])
@@ -105,14 +106,14 @@ def main_mode():
 
     # 상태 초기화
     if "char_state" not in st.session_state: st.session_state.char_state = "normal"
-    if "char_size" not in st.session_state: st.session_state.char_size = 300
+    if "char_size" not in st.session_state: st.session_state.char_size = 320
     if "tts_on" not in st.session_state: st.session_state.tts_on = True
     if "tts_slow" not in st.session_state: st.session_state.tts_slow = False
 
-    # 🎛️ 컨트롤
+    # 컨트롤 UI
     c1, c2, c3 = st.columns([2,1,1])
     with c1:
-        st.session_state.char_size = st.slider("캐릭터 크기", 220, 420, st.session_state.char_size, step=10)
+        st.session_state.char_size = st.slider("캐릭터 크기", 220, 440, st.session_state.char_size, step=10)
     with c2:
         st.session_state.tts_on = st.toggle("시나모 목소리", value=st.session_state.tts_on)
     with c3:
@@ -128,19 +129,19 @@ def main_mode():
     st.markdown("<div class='cinnamo2d'>", unsafe_allow_html=True)
     st.image(f"assets/{char_map[st.session_state.char_state]}",
              width=st.session_state.char_size)
-    st.markdown("<div class='bubble2d'>안녕! 나랑 이야기해볼래? ☁️</div>", unsafe_allow_html=True)
+    st.markdown(f"<div class='bubble2d'>안녕 {CHILD_NAME}! 나랑 이야기해볼래? ☁️</div>", unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
-    # 인사도 TTS로
+    # 인사 TTS
     if st.session_state.tts_on:
         try:
-            st.audio(tts_ko_bytes("안녕! 나랑 이야기해볼래?", slow=True), format="audio/mp3")
+            st.audio(tts_ko_bytes(f"안녕 {CHILD_NAME}! 나랑 이야기해볼래?", slow=True), format="audio/mp3")
         except:
             pass
 
     st.markdown("---")
     st.subheader("🎤 말해볼까?")
-    audio = st.audio_input("시나모에게 말해보세요 🎙️")
+    audio = st.audio_input(f"{CHILD_NAME}가 시나모에게 말해보세요 🎙️")
 
     if st.button("▶️ 보내기", use_container_width=True):
         if not audio:
@@ -157,7 +158,7 @@ def main_mode():
             else:
                 st.session_state.char_state = "normal"
 
-            # 대화 출력
+            # 대화 표시
             st.markdown(f"""
             <div class='cinnamo2d'>
               <img src='assets/{char_map[st.session_state.char_state]}' 
@@ -166,7 +167,7 @@ def main_mode():
             </div>
             """, unsafe_allow_html=True)
 
-            # TTS 음성 재생
+            # TTS 출력
             if st.session_state.tts_on:
                 try:
                     mp3_bytes = tts_ko_bytes(fb, slow=st.session_state.tts_slow)
@@ -184,7 +185,7 @@ def main_mode():
             st.session_state.mode = "decorate_room"; st.experimental_rerun()
 
 # ==============================================
-# ☁️ 하늘 꾸미기
+# ☁️ 하늘 / 🏠 방 꾸미기 (v4.4와 동일)
 # ==============================================
 def decorate_sky_mode():
     st.header("☁️ 하늘 꾸미기")
@@ -200,9 +201,6 @@ def decorate_sky_mode():
     if st.button("🔙 돌아가기"):
         st.session_state.mode = "main"; st.experimental_rerun()
 
-# ==============================================
-# 🏠 방 꾸미기
-# ==============================================
 def decorate_room_mode():
     st.header("🏠 방 꾸미기")
     prev = load_json(os.path.join(DATA_DIR,"room.json"), {})
