@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
-# 🩵 Cinnamo World v4.6 — Personalized Edition (도아 맞춤 TTS)
-# 시나모롤 감성의 귀여운 강아지가 도아에게 말을 걸고 반응하는 교육용 감정 대화 놀이
+# 🩵 Cinnamo World v4.7 — Emotion & TTS Edition
+# 시나모롤 감성의 강아지가 도아와 음성으로 대화하며 감정에 따라 배경이 변하는 교육용 대화놀이
 
 import os, json, tempfile
 from io import BytesIO
@@ -15,27 +15,80 @@ from streamlit_drawable_canvas import st_canvas
 st.set_page_config(page_title="Cinnamo World", layout="centered")
 client = OpenAI(api_key=st.secrets.get("OPENAI_API_KEY", ""))
 
-CHILD_NAME = "도아"   # 🧸 아이 이름
+CHILD_NAME = "도아"
 DATA_DIR = "data"
 ASSETS_DIR = "assets"
 os.makedirs(DATA_DIR, exist_ok=True)
 
 # ==============================================
-# 🎨 CSS
+# 🎨 감정별 배경 + 애니메이션
 # ==============================================
-st.markdown("""
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@700;900&display=swap');
-html, body, .stApp {background:linear-gradient(to bottom,#C7EDFF,#FCE6F5);}
-*{font-family:'Nunito','NanumSquareRound',sans-serif;}
-button[kind="primary"]{
- background:#FFD6EC !important;color:#6B21A8 !important;
- border-radius:16px !important;font-weight:900 !important;
- box-shadow:0 4px 12px rgba(255,192,203,.35);
-}
-button[kind="primary"]:hover{transform:scale(1.03);}
-</style>
-""", unsafe_allow_html=True)
+def set_emotion_bg(state: str):
+    """감정 상태에 따라 배경색 + 애니메이션 지정"""
+    if state == "happy":
+        color = "#FFE6F1"
+        symbol = "💗"
+        anim = "floatUp"
+    elif state == "surprised":
+        color = "#C7EDFF"
+        symbol = "✨"
+        anim = "blink"
+    else:
+        color = "#EDE7FF"
+        symbol = "☁️"
+        anim = "drift"
+
+    st.markdown(f"""
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@700;900&display=swap');
+
+    html, body, .stApp {{
+        background:{color};
+        transition:background-color 0.8s ease;
+        overflow:hidden;
+    }}
+
+    *{{font-family:'Nunito','NanumSquareRound',sans-serif;}}
+
+    button[kind="primary"]{{
+        background:#FFD6EC !important;color:#6B21A8 !important;
+        border-radius:16px !important;font-weight:900 !important;
+        box-shadow:0 4px 12px rgba(255,192,203,.35);
+    }}
+    button[kind="primary"]:hover{{transform:scale(1.03);}}
+
+
+    /* 💫 떠오르는 이모지 애니메이션 */
+    .emoji {{
+        position:fixed;
+        bottom:-40px;
+        font-size:36px;
+        animation:{anim} 6s infinite ease-in-out;
+        opacity:0.8;
+        z-index:0;
+    }}
+
+    @keyframes floatUp {{
+        0% {{transform:translateY(0) scale(0.8); opacity:0;}}
+        30% {{opacity:1;}}
+        70% {{opacity:1; transform:translateY(-600px) scale(1.2);}}
+        100% {{opacity:0; transform:translateY(-800px) scale(1.3);}}
+    }}
+    @keyframes blink {{
+        0%,100% {{opacity:0;}}
+        50% {{opacity:1; transform:scale(1.3);}}
+    }}
+    @keyframes drift {{
+        0% {{transform:translateX(-100px); opacity:0.6;}}
+        50% {{transform:translateX(100px); opacity:0.8;}}
+        100% {{transform:translateX(-100px); opacity:0.6;}}
+    }}
+    </style>
+
+    <div class="emoji" style="left:20%">{symbol}</div>
+    <div class="emoji" style="left:50%">{symbol}</div>
+    <div class="emoji" style="left:80%">{symbol}</div>
+    """, unsafe_allow_html=True)
 
 # ==============================================
 # 📦 유틸
@@ -71,10 +124,11 @@ def transcribe_audio(bytes_wav: bytes) -> str:
 def cinnamo_feedback(scene: str, utter: str) -> str:
     sys = (f"너는 7세 어린이 '{CHILD_NAME}'의 친구인 귀여운 강아지 캐릭터야. "
            "아이의 말을 듣고 따뜻하게 한 문장으로 반응해줘. "
-           "출력은 항상 '도아야, ~'로 시작하고, 시나모롤처럼 짧고 다정하게 말해줘.")
+           "출력은 항상 '{CHILD_NAME}야, ~'로 시작하고, 시나모롤처럼 짧고 다정하게 말해줘.")
     user = f"상황: {scene}\n아이가 한 말: {utter}"
     rsp = client.responses.create(model="gpt-5-mini",
-                                  input=[{"role":"system","content":sys},{"role":"user","content":user}])
+                                  input=[{"role":"system","content":sys},
+                                         {"role":"user","content":user}])
     return rsp.output_text.strip()
 
 # ==============================================
@@ -91,24 +145,18 @@ def tts_ko_bytes(text: str, slow: bool=False) -> bytes:
 # 🩵 메인 대화 모드
 # ==============================================
 def main_mode():
-    st.markdown("""
-    <style>
-    .cinnamo2d{text-align:center;margin-top:-25px;}
-    .cinnamo2d img.char{animation:float 3s ease-in-out infinite;}
-    .bubble2d{
-        background:white;border-radius:24px;padding:16px 22px;
-        display:inline-block;box-shadow:0 4px 10px rgba(0,0,0,.1);
-        font-size:20px;color:#444;margin-top:12px;
-    }
-    @keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
-    </style>
-    """, unsafe_allow_html=True)
+    # 초기화
+    if "char_state" not in st.session_state:
+        st.session_state.char_state = "normal"
+    if "char_size" not in st.session_state:
+        st.session_state.char_size = 320
+    if "tts_on" not in st.session_state:
+        st.session_state.tts_on = True
+    if "tts_slow" not in st.session_state:
+        st.session_state.tts_slow = False
 
-    # 상태 초기화
-    if "char_state" not in st.session_state: st.session_state.char_state = "normal"
-    if "char_size" not in st.session_state: st.session_state.char_size = 320
-    if "tts_on" not in st.session_state: st.session_state.tts_on = True
-    if "tts_slow" not in st.session_state: st.session_state.tts_slow = False
+    # 감정 배경 적용
+    set_emotion_bg(st.session_state.char_state)
 
     # 컨트롤 UI
     c1, c2, c3 = st.columns([2,1,1])
@@ -126,10 +174,13 @@ def main_mode():
         "surprised": "character_surprised.png"
     }
 
-    st.markdown("<div class='cinnamo2d'>", unsafe_allow_html=True)
+    st.markdown("<div style='text-align:center;margin-top:-25px;'>", unsafe_allow_html=True)
     st.image(f"assets/{char_map[st.session_state.char_state]}",
              width=st.session_state.char_size)
-    st.markdown(f"<div class='bubble2d'>안녕 {CHILD_NAME}! 나랑 이야기해볼래? ☁️</div>", unsafe_allow_html=True)
+    st.markdown(f"<div style='font-size:22px; background:white; "
+                "display:inline-block; padding:14px 24px; border-radius:20px; "
+                "box-shadow:0 4px 10px rgba(0,0,0,.1);'>"
+                f"안녕 {CHILD_NAME}! 나랑 이야기해볼래? ☁️</div>", unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
     # 인사 TTS
@@ -150,7 +201,7 @@ def main_mode():
             text = transcribe_audio(audio.getvalue())
             fb = cinnamo_feedback("자유 대화", text)
 
-            # 표정 판정
+            # 감정 상태 업데이트
             if any(x in fb for x in ["좋아요","멋져요","잘했어요","행복","사랑","기뻐"]):
                 st.session_state.char_state = "happy"
             elif any(x in fb for x in ["놀랐","깜짝","우와","헉"]):
@@ -158,16 +209,20 @@ def main_mode():
             else:
                 st.session_state.char_state = "normal"
 
-            # 대화 표시
+            set_emotion_bg(st.session_state.char_state)
+
             st.markdown(f"""
-            <div class='cinnamo2d'>
+            <div style='text-align:center;'>
               <img src='assets/{char_map[st.session_state.char_state]}' 
-                   width='{st.session_state.char_size}' class='char'>
-              <div class='bubble2d'>💬 {fb}</div>
+                   width='{st.session_state.char_size}'>
+              <div style='font-size:22px; background:white; border-radius:20px;
+                   display:inline-block; padding:14px 24px; box-shadow:0 4px 10px rgba(0,0,0,.1);'>
+                💬 {fb}
+              </div>
             </div>
             """, unsafe_allow_html=True)
 
-            # TTS 출력
+            # TTS 재생
             if st.session_state.tts_on:
                 try:
                     mp3_bytes = tts_ko_bytes(fb, slow=st.session_state.tts_slow)
@@ -185,7 +240,7 @@ def main_mode():
             st.session_state.mode = "decorate_room"; st.experimental_rerun()
 
 # ==============================================
-# ☁️ 하늘 / 🏠 방 꾸미기 (v4.4와 동일)
+# ☁️ 하늘 / 🏠 방 꾸미기
 # ==============================================
 def decorate_sky_mode():
     st.header("☁️ 하늘 꾸미기")
