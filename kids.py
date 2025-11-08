@@ -1,14 +1,16 @@
 # -*- coding: utf-8 -*-
-# 🩵 Cinnamo World v4.4 — 2D Dialogue Edition
-# 아이들이 시나모롤 스타일 캐릭터와 음성으로 대화하며 배우는 감정 놀이
+# 🩵 Cinnamo World v4.5 — 2D Dialogue Edition + TTS + 캐릭터 크기 조절
+# 아이들이 시나모롤 감성의 강아지 캐릭터와 음성으로 대화하며 배우는 감정 놀이
 
-import os, json, random, tempfile
+import os, json, tempfile
+from io import BytesIO
 import streamlit as st
 from openai import OpenAI
+from gtts import gTTS
 from streamlit_drawable_canvas import st_canvas
 
 # ==============================================
-# 🔧 기본 설정
+# ⚙️ 기본 설정
 # ==============================================
 st.set_page_config(page_title="Cinnamo World", layout="centered")
 client = OpenAI(api_key=st.secrets.get("OPENAI_API_KEY", ""))
@@ -17,13 +19,8 @@ DATA_DIR = "data"
 ASSETS_DIR = "assets"
 os.makedirs(DATA_DIR, exist_ok=True)
 
-# 파일 경로
-USER_FILE = os.path.join(DATA_DIR, "user_data.json")
-SKY_FILE = os.path.join(DATA_DIR, "decorations.json")
-ROOM_FILE = os.path.join(DATA_DIR, "room.json")
-
 # ==============================================
-# 🎨 CSS (공용)
+# 🎨 CSS
 # ==============================================
 st.markdown("""
 <style>
@@ -36,16 +33,16 @@ button[kind="primary"]{
  box-shadow:0 4px 12px rgba(255,192,203,.35);
 }
 button[kind="primary"]:hover{transform:scale(1.03);}
-.progress-cute > div > div{
- background:linear-gradient(90deg,#A5F3FC,#F9A8D4);
- border-radius:999px;
-}
 </style>
 """, unsafe_allow_html=True)
 
 # ==============================================
-# ⚙️ 데이터 로드/저장 함수
+# 📦 유틸
 # ==============================================
+def asset(name):
+    path = os.path.join(ASSETS_DIR, name)
+    return path if os.path.exists(path) else None
+
 def load_json(path, default):
     if os.path.exists(path):
         with open(path, "r", encoding="utf-8") as f:
@@ -56,12 +53,8 @@ def save_json(path, data):
     with open(path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
-def asset(file):  # 자산 경로
-    p = os.path.join(ASSETS_DIR, file)
-    return p if os.path.exists(p) else None
-
 # ==============================================
-# 🗣️ 음성 인식 + 피드백
+# 🎤 음성 인식 + GPT 피드백
 # ==============================================
 def transcribe_audio(bytes_wav: bytes) -> str:
     with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
@@ -76,24 +69,31 @@ def transcribe_audio(bytes_wav: bytes) -> str:
 
 def cinnamo_feedback(scene: str, utter: str) -> str:
     sys = ("너는 7세 어린이의 친구인 귀여운 강아지 캐릭터야. "
-           "아이의 말을 듣고 다정하고 따뜻하게 한 문장으로 반응해줘. "
-           "출력은 시나모롤처럼 귀엽고 짧게, 존댓말로 해줘.")
+           "아이의 말을 듣고 다정하게 한 문장으로 반응해줘. "
+           "시나모롤처럼 귀엽고 짧게, 존댓말로 답해줘.")
     user = f"상황: {scene}\n아이가 한 말: {utter}"
-    rsp = client.responses.create(model="gpt-5-mini", input=[{"role":"system","content":sys},{"role":"user","content":user}])
+    rsp = client.responses.create(model="gpt-5-mini",
+                                  input=[{"role":"system","content":sys},{"role":"user","content":user}])
     return rsp.output_text.strip()
 
-def tiny_sfx(file):
-    path = asset(file)
-    if path: st.audio(path, format="audio/mp3")
+# ==============================================
+# 🔊 TTS (gTTS 캐시)
+# ==============================================
+@st.cache_data(show_spinner=False)
+def tts_ko_bytes(text: str, slow: bool=False) -> bytes:
+    t = gTTS(text=text, lang="ko", slow=slow)
+    buf = BytesIO()
+    t.write_to_fp(buf)
+    return buf.getvalue()
 
 # ==============================================
-# 🩵 메인 대화 화면 (2D 캐릭터 중심)
+# 🩵 메인 대화 모드
 # ==============================================
 def main_mode():
     st.markdown("""
     <style>
-    .cinnamo2d{text-align:center;margin-top:-30px;}
-    .cinnamo2d img.char{width:240px;animation:float 3s ease-in-out infinite;}
+    .cinnamo2d{text-align:center;margin-top:-25px;}
+    .cinnamo2d img.char{animation:float 3s ease-in-out infinite;}
     .bubble2d{
         background:white;border-radius:24px;padding:16px 22px;
         display:inline-block;box-shadow:0 4px 10px rgba(0,0,0,.1);
@@ -103,9 +103,22 @@ def main_mode():
     </style>
     """, unsafe_allow_html=True)
 
-    if "char_state" not in st.session_state:
-        st.session_state.char_state = "normal"
+    # 상태 초기화
+    if "char_state" not in st.session_state: st.session_state.char_state = "normal"
+    if "char_size" not in st.session_state: st.session_state.char_size = 300
+    if "tts_on" not in st.session_state: st.session_state.tts_on = True
+    if "tts_slow" not in st.session_state: st.session_state.tts_slow = False
 
+    # 🎛️ 컨트롤
+    c1, c2, c3 = st.columns([2,1,1])
+    with c1:
+        st.session_state.char_size = st.slider("캐릭터 크기", 220, 420, st.session_state.char_size, step=10)
+    with c2:
+        st.session_state.tts_on = st.toggle("시나모 목소리", value=st.session_state.tts_on)
+    with c3:
+        st.session_state.tts_slow = st.toggle("느리게", value=st.session_state.tts_slow)
+
+    # 캐릭터 표시
     char_map = {
         "normal": "character_normal.png",
         "happy": "character_happy.png",
@@ -113,9 +126,17 @@ def main_mode():
     }
 
     st.markdown("<div class='cinnamo2d'>", unsafe_allow_html=True)
-    st.image(f"assets/{char_map[st.session_state.char_state]}", width=260)
+    st.image(f"assets/{char_map[st.session_state.char_state]}",
+             width=st.session_state.char_size)
     st.markdown("<div class='bubble2d'>안녕! 나랑 이야기해볼래? ☁️</div>", unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
+
+    # 인사도 TTS로
+    if st.session_state.tts_on:
+        try:
+            st.audio(tts_ko_bytes("안녕! 나랑 이야기해볼래?", slow=True), format="audio/mp3")
+        except:
+            pass
 
     st.markdown("---")
     st.subheader("🎤 말해볼까?")
@@ -136,13 +157,22 @@ def main_mode():
             else:
                 st.session_state.char_state = "normal"
 
+            # 대화 출력
             st.markdown(f"""
             <div class='cinnamo2d'>
-              <img src='assets/{char_map[st.session_state.char_state]}' width='260' class='char'>
+              <img src='assets/{char_map[st.session_state.char_state]}' 
+                   width='{st.session_state.char_size}' class='char'>
               <div class='bubble2d'>💬 {fb}</div>
             </div>
             """, unsafe_allow_html=True)
-            tiny_sfx("sound_save.mp3")
+
+            # TTS 음성 재생
+            if st.session_state.tts_on:
+                try:
+                    mp3_bytes = tts_ko_bytes(fb, slow=st.session_state.tts_slow)
+                    st.audio(mp3_bytes, format="audio/mp3")
+                except Exception as e:
+                    st.warning(f"TTS 오류: {e}")
 
     st.markdown("---")
     c1, c2 = st.columns(2)
@@ -158,22 +188,15 @@ def main_mode():
 # ==============================================
 def decorate_sky_mode():
     st.header("☁️ 하늘 꾸미기")
-    prev = load_json(SKY_FILE, {})
-    bg_img = asset("bg_sky.png")
-    canvas_result = st_canvas(
-        fill_color="rgba(255,255,255,0.3)",
-        stroke_width=1,
-        height=500, width=700,
-        drawing_mode="transform",
-        key="decorate_sky",
-        background_image=bg_img if bg_img else None,
-        initial_drawing=prev if prev else None,
-    )
+    prev = load_json(os.path.join(DATA_DIR,"decorations.json"), {})
+    bg = asset("bg_sky.png")
+    result = st_canvas(height=500, width=700,
+                       drawing_mode="transform",
+                       background_image=bg if bg else None,
+                       initial_drawing=prev)
     if st.button("💾 저장하기"):
-        save_json(SKY_FILE, canvas_result.json_data)
+        save_json(os.path.join(DATA_DIR,"decorations.json"), result.json_data)
         st.success("하늘이 저장되었어요 ☁️")
-        tiny_sfx("sound_save.mp3")
-
     if st.button("🔙 돌아가기"):
         st.session_state.mode = "main"; st.experimental_rerun()
 
@@ -182,27 +205,20 @@ def decorate_sky_mode():
 # ==============================================
 def decorate_room_mode():
     st.header("🏠 방 꾸미기")
-    prev = load_json(ROOM_FILE, {})
-    bg_img = asset("bg_room.png")
-    canvas_result = st_canvas(
-        fill_color="rgba(255,255,255,0.3)",
-        stroke_width=1,
-        height=500, width=700,
-        drawing_mode="transform",
-        key="decorate_room",
-        background_image=bg_img if bg_img else None,
-        initial_drawing=prev if prev else None,
-    )
+    prev = load_json(os.path.join(DATA_DIR,"room.json"), {})
+    bg = asset("bg_room.png")
+    result = st_canvas(height=500, width=700,
+                       drawing_mode="transform",
+                       background_image=bg if bg else None,
+                       initial_drawing=prev)
     if st.button("💾 저장하기"):
-        save_json(ROOM_FILE, canvas_result.json_data)
+        save_json(os.path.join(DATA_DIR,"room.json"), result.json_data)
         st.success("방이 저장되었어요 🏠")
-        tiny_sfx("sound_save.mp3")
-
     if st.button("🔙 돌아가기"):
         st.session_state.mode = "main"; st.experimental_rerun()
 
 # ==============================================
-# 🚀 실행 (라우팅)
+# 🚀 실행
 # ==============================================
 if "mode" not in st.session_state:
     st.session_state.mode = "main"
