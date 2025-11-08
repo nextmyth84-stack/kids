@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
-# 🩷 Cinnamo World v5.0 — OpenAI TTS (부드러운 시나모 목소리)
-# 자연스럽고 따뜻한 음성 + 입 움직임 애니메이션 + 자동 대화 루프
+# 🩷 Cinnamo World v5.1 — 시나모 목소리 선택 버전
+# 자연스러운 TTS + 입 움직임 + 자동 대화 루프 + 음색 선택 기능
 
-import os, json, tempfile, time
-from io import BytesIO
+import os, time, tempfile
 import streamlit as st
+from io import BytesIO
 from openai import OpenAI
 
 # ==============================================
@@ -18,15 +18,15 @@ ASSETS_DIR = "assets"
 os.makedirs(ASSETS_DIR, exist_ok=True)
 
 # ==============================================
-# 🎨 감정별 배경 + 애니메이션
+# 🎨 감정별 배경 + 스타일
 # ==============================================
 def set_emotion_bg(state: str):
     if state == "happy":
-        color = "#FFE6F1"; symbol = "💗"; anim = "floatUp"
+        color, symbol, anim = "#FFE6F1", "💗", "floatUp"
     elif state == "surprised":
-        color = "#C7EDFF"; symbol = "✨"; anim = "blink"
+        color, symbol, anim = "#C7EDFF", "✨", "blink"
     else:
-        color = "#EDE7FF"; symbol = "☁️"; anim = "drift"
+        color, symbol, anim = "#EDE7FF", "☁️", "drift"
 
     st.markdown(f"""
     <style>
@@ -41,24 +41,6 @@ def set_emotion_bg(state: str):
         border-radius:16px !important;font-weight:900 !important;
         box-shadow:0 4px 12px rgba(255,192,203,.35);
     }}
-    .emoji {{
-        position:fixed; bottom:-40px; font-size:36px;
-        animation:{anim} 6s infinite ease-in-out; opacity:0.8; z-index:0;
-    }}
-    @keyframes floatUp {{
-        0% {{transform:translateY(0); opacity:0;}}
-        30% {{opacity:1;}}
-        70% {{transform:translateY(-600px); opacity:1;}}
-        100% {{opacity:0; transform:translateY(-800px);}}
-    }}
-    @keyframes blink {{
-        0%,100% {{opacity:0;}} 50% {{opacity:1; transform:scale(1.3);}}
-    }}
-    @keyframes drift {{
-        0% {{transform:translateX(-100px); opacity:0.6;}}
-        50% {{transform:translateX(100px); opacity:0.8;}}
-        100% {{transform:translateX(-100px); opacity:0.6;}}
-    }}
     .mic-btn {{
         width:120px; height:120px;
         background:#FFCCE5; border-radius:60px;
@@ -69,19 +51,13 @@ def set_emotion_bg(state: str):
     }}
     .mic-btn:hover {{ transform:scale(1.05); background:#FFBBDD; }}
     </style>
-    <div class="emoji" style="left:20%">{symbol}</div>
-    <div class="emoji" style="left:50%">{symbol}</div>
-    <div class="emoji" style="left:80%">{symbol}</div>
     """, unsafe_allow_html=True)
 
 # ==============================================
-# 🔊 OpenAI TTS (부드러운 시나모 음성)
+# 🔊 OpenAI TTS
 # ==============================================
 def tts_ko_bytes(text: str, voice="verse") -> bytes:
-    """
-    OpenAI TTS - 자연스럽고 따뜻한 시나모 목소리
-    voice: 'warm', 'verse', 'alloy'
-    """
+    """부드럽고 따뜻한 시나모 목소리"""
     try:
         speech = client.audio.speech.create(
             model="gpt-4o-mini-tts",
@@ -117,7 +93,7 @@ def cinnamo_speak(prompt: str) -> str:
     return rsp.output_text.strip()
 
 # ==============================================
-# 👄 입 움직임 애니메이션
+# 👄 입 움직임
 # ==============================================
 def cinnamo_speaking_animation(state: str, duration: float = 3.5):
     normal_img = os.path.join(ASSETS_DIR, f"character_{state}.png")
@@ -135,9 +111,9 @@ def cinnamo_speaking_animation(state: str, duration: float = 3.5):
     ph.image(normal_img, width=320)
 
 # ==============================================
-# 🩵 메인 루프
+# 🩵 대화 모드
 # ==============================================
-def main_mode():
+def main_mode(voice_type: str):
     if "char_state" not in st.session_state:
         st.session_state.char_state = "normal"
     if "last_msg" not in st.session_state:
@@ -170,7 +146,7 @@ def main_mode():
         st.session_state.loop_stage = "listen"
         with st.empty():
             cinnamo_speaking_animation("normal", 3.5)
-        st.audio(tts_ko_bytes(msg, voice="verse"), format="audio/mp3")
+        st.audio(tts_ko_bytes(msg, voice=voice_type), format="audio/mp3")
 
     st.markdown("---")
     st.markdown("<h3 style='text-align:center;'>🎙️ 시나모에게 말해보기</h3>", unsafe_allow_html=True)
@@ -195,28 +171,39 @@ def main_mode():
 
             with st.empty():
                 cinnamo_speaking_animation(state, 3.5)
-            st.audio(tts_ko_bytes(fb, voice="verse"), format="audio/mp3")
+            st.audio(tts_ko_bytes(fb, voice=voice_type), format="audio/mp3")
 
             nxt = cinnamo_speak(f"다음으로 {CHILD_NAME}에게 귀여운 질문 하나 만들어줘. 짧고 따뜻하게 1문장으로.")
             st.session_state.last_msg = nxt
             with st.empty():
                 cinnamo_speaking_animation(state, 3.5)
-            st.audio(tts_ko_bytes(nxt, voice="verse"), format="audio/mp3")
+            st.audio(tts_ko_bytes(nxt, voice=voice_type), format="audio/mp3")
 
-            st.markdown(f"""
-            <div style='text-align:center; margin-top:10px;'>
-              <div style='font-size:22px; background:white; border-radius:20px;
-                   display:inline-block; padding:14px 24px; box-shadow:0 4px 10px rgba(0,0,0,.1);'>
-                💬 {nxt}
-              </div>
-            </div>
-            """, unsafe_allow_html=True)
+# ==============================================
+# 🎧 목소리 테스트 탭
+# ==============================================
+def voice_test_tab():
+    st.header("🎧 시나모 목소리 미리듣기")
+    text = "도아야, 오늘 하루도 즐겁게 보내자!"
+    for v in ["verse", "ballad", "fable"]:
+        st.markdown(f"### 💬 {v}")
+        with st.spinner(f"{v} 목소리 생성 중..."):
+            audio = client.audio.speech.create(
+                model="gpt-4o-mini-tts",
+                voice=v,
+                input=text
+            )
+            st.audio(audio.read(), format="audio/mp3")
 
 # ==============================================
 # 🚀 실행
 # ==============================================
-if "mode" not in st.session_state:
-    st.session_state.mode = "main"
-if st.session_state.mode == "main":
-    main_mode()
+tab1, tab2 = st.tabs(["🐶 대화하기", "🎧 목소리 테스트"])
+with tab1:
+    st.sidebar.header("🎤 시나모 목소리 선택")
+    voice_type = st.sidebar.selectbox("목소리", ["verse", "ballad", "fable"], index=0)
+    main_mode(voice_type)
+with tab2:
+    voice_test_tab()
+
 st.caption("※ 본 프로젝트는 Sanrio와 무관한 교육용 데모입니다.")
