@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
-# 🩵 Cinnamo World v5.0 — OpenAI TTS (부드러운 시나모 목소리)
-# 귀여운 시나모 캐릭터가 도아와 대화하며 자연스러운 음성으로 말하는 버전
+# 🩷 Cinnamo World v5.0 — OpenAI TTS (부드러운 시나모 목소리)
+# 자연스럽고 따뜻한 음성 + 입 움직임 애니메이션 + 자동 대화 루프
 
 import os, json, tempfile, time
 from io import BytesIO
@@ -42,11 +42,8 @@ def set_emotion_bg(state: str):
         box-shadow:0 4px 12px rgba(255,192,203,.35);
     }}
     .emoji {{
-        position:fixed;
-        bottom:-40px;
-        font-size:36px;
-        animation:{anim} 6s infinite ease-in-out;
-        opacity:0.8; z-index:0;
+        position:fixed; bottom:-40px; font-size:36px;
+        animation:{anim} 6s infinite ease-in-out; opacity:0.8; z-index:0;
     }}
     @keyframes floatUp {{
         0% {{transform:translateY(0); opacity:0;}}
@@ -55,8 +52,7 @@ def set_emotion_bg(state: str):
         100% {{opacity:0; transform:translateY(-800px);}}
     }}
     @keyframes blink {{
-        0%,100% {{opacity:0;}}
-        50% {{opacity:1; transform:scale(1.3);}}
+        0%,100% {{opacity:0;}} 50% {{opacity:1; transform:scale(1.3);}}
     }}
     @keyframes drift {{
         0% {{transform:translateX(-100px); opacity:0.6;}}
@@ -69,8 +65,7 @@ def set_emotion_bg(state: str):
         display:flex; justify-content:center; align-items:center;
         margin:20px auto; cursor:pointer;
         box-shadow:0 4px 12px rgba(0,0,0,0.15);
-        font-size:48px;
-        transition:transform .2s;
+        font-size:48px; transition:transform .2s;
     }}
     .mic-btn:hover {{ transform:scale(1.05); background:#FFBBDD; }}
     </style>
@@ -80,16 +75,23 @@ def set_emotion_bg(state: str):
     """, unsafe_allow_html=True)
 
 # ==============================================
-# 🔊 OpenAI 부드러운 TTS
+# 🔊 OpenAI TTS (부드러운 시나모 음성)
 # ==============================================
-def tts_ko_bytes(text: str, voice="soft", model="gpt-4o-mini-tts") -> bytes:
-    """OpenAI TTS - 부드럽고 따뜻한 시나모 목소리"""
-    speech = client.audio.speech.create(
-        model=model,
-        voice=voice,
-        input=text
-    )
-    return speech.read()
+def tts_ko_bytes(text: str, voice="soft") -> bytes:
+    """
+    OpenAI TTS - 자연스럽고 따뜻한 시나모 목소리
+    voice: 'soft', 'warm', 'verse', 'alloy'
+    """
+    try:
+        speech = client.audio.speech.create(
+            model="gpt-4o-mini-tts",
+            voice=voice,
+            input=text
+        )
+        return speech.read()
+    except Exception as e:
+        st.warning(f"TTS 오류: {e}")
+        return b""
 
 # ==============================================
 # 🎤 음성 인식 + GPT 반응
@@ -108,8 +110,8 @@ def transcribe_audio(bytes_wav: bytes) -> str:
 def cinnamo_speak(prompt: str) -> str:
     rsp = client.responses.create(model="gpt-5-mini",
         input=[{"role":"system","content":
-            f"너는 7세 어린이 '{CHILD_NAME}'의 친구인 부드러운 목소리의 강아지야. "
-            "아이에게 따뜻하고 다정하게 한 문장으로만 대답해."},
+            f"너는 7세 어린이 '{CHILD_NAME}'의 친구인 부드럽고 다정한 강아지야. "
+            "아이에게 짧고 따뜻하게 존댓말로 대답해줘."},
             {"role":"user","content":prompt}]
     )
     return rsp.output_text.strip()
@@ -120,22 +122,20 @@ def cinnamo_speak(prompt: str) -> str:
 def cinnamo_speaking_animation(state: str, duration: float = 3.5):
     normal_img = os.path.join(ASSETS_DIR, f"character_{state}.png")
     speak_img = os.path.join(ASSETS_DIR, f"character_{state}_speaking.png")
-
     if not os.path.exists(speak_img):
         st.image(normal_img, width=320)
         return
-
     end = time.time() + duration
     ph = st.empty()
     while time.time() < end:
         ph.image(speak_img, width=320)
-        time.sleep(0.22)
+        time.sleep(0.2)
         ph.image(normal_img, width=320)
         time.sleep(0.25)
     ph.image(normal_img, width=320)
 
 # ==============================================
-# 🩵 메인 대화 모드
+# 🩵 메인 루프
 # ==============================================
 def main_mode():
     if "char_state" not in st.session_state:
@@ -170,7 +170,7 @@ def main_mode():
         st.session_state.loop_stage = "listen"
         with st.empty():
             cinnamo_speaking_animation("normal", 3.5)
-        st.audio(tts_ko_bytes(msg), format="audio/mp3")
+        st.audio(tts_ko_bytes(msg, voice="soft"), format="audio/mp3")
 
     st.markdown("---")
     st.markdown("<h3 style='text-align:center;'>🎙️ 시나모에게 말해보기</h3>", unsafe_allow_html=True)
@@ -191,17 +191,17 @@ def main_mode():
             else:
                 state = "normal"
             st.session_state.char_state = state
-
             set_emotion_bg(state)
+
             with st.empty():
                 cinnamo_speaking_animation(state, 3.5)
-            st.audio(tts_ko_bytes(fb), format="audio/mp3")
+            st.audio(tts_ko_bytes(fb, voice="soft"), format="audio/mp3")
 
             nxt = cinnamo_speak(f"다음으로 {CHILD_NAME}에게 귀여운 질문 하나 만들어줘. 짧고 따뜻하게 1문장으로.")
             st.session_state.last_msg = nxt
             with st.empty():
                 cinnamo_speaking_animation(state, 3.5)
-            st.audio(tts_ko_bytes(nxt), format="audio/mp3")
+            st.audio(tts_ko_bytes(nxt, voice="soft"), format="audio/mp3")
 
             st.markdown(f"""
             <div style='text-align:center; margin-top:10px;'>
@@ -217,8 +217,6 @@ def main_mode():
 # ==============================================
 if "mode" not in st.session_state:
     st.session_state.mode = "main"
-
 if st.session_state.mode == "main":
     main_mode()
-
 st.caption("※ 본 프로젝트는 Sanrio와 무관한 교육용 데모입니다.")
