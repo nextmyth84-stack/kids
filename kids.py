@@ -80,7 +80,7 @@ def set_emotion_bg(state: str):
 def tts_ko_bytes(text: str, voice="verse") -> bytes:
     """
     OpenAI TTS - 자연스럽고 따뜻한 시나모 목소리
-    voice: 'soft', 'warm', 'verse', 'alloy'
+    voice: 'warm', 'verse', 'alloy'
     """
     try:
         speech = client.audio.speech.create(
@@ -170,7 +170,7 @@ def main_mode():
         st.session_state.loop_stage = "listen"
         with st.empty():
             cinnamo_speaking_animation("normal", 3.5)
-        st.audio(tts_ko_bytes(msg, voice="soft"), format="audio/mp3")
+        st.audio(tts_ko_bytes(msg, voice="verse"), format="audio/mp3")
 
     st.markdown("---")
     st.markdown("<h3 style='text-align:center;'>🎙️ 시나모에게 말해보기</h3>", unsafe_allow_html=True)
@@ -195,13 +195,13 @@ def main_mode():
 
             with st.empty():
                 cinnamo_speaking_animation(state, 3.5)
-            st.audio(tts_ko_bytes(fb, voice="soft"), format="audio/mp3")
+            st.audio(tts_ko_bytes(fb, voice="verse"), format="audio/mp3")
 
             nxt = cinnamo_speak(f"다음으로 {CHILD_NAME}에게 귀여운 질문 하나 만들어줘. 짧고 따뜻하게 1문장으로.")
             st.session_state.last_msg = nxt
             with st.empty():
                 cinnamo_speaking_animation(state, 3.5)
-            st.audio(tts_ko_bytes(nxt, voice="soft"), format="audio/mp3")
+            st.audio(tts_ko_bytes(nxt, voice="verse"), format="audio/mp3")
 
             st.markdown(f"""
             <div style='text-align:center; margin-top:10px;'>
