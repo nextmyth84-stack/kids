@@ -1,13 +1,12 @@
 # -*- coding: utf-8 -*-
-# 🩵 Cinnamo World v4.8 — Auto Dialogue Loop Edition
-# 시나모가 먼저 말 걸고, 도아가 마이크로 답하면 대화가 자동 이어지는 감정 기반 대화놀이
+# 🩵 Cinnamo World v4.9 Final — 입 움직임 애니메이션 + 자동 대화 루프
+# 귀여운 시나모 캐릭터가 도아와 음성으로 대화하며 표정과 입이 변하는 교육용 대화놀이
 
-import os, json, tempfile
+import os, json, tempfile, time
 from io import BytesIO
 import streamlit as st
 from openai import OpenAI
 from gtts import gTTS
-from streamlit_drawable_canvas import st_canvas
 
 # ==============================================
 # ⚙️ 기본 설정
@@ -16,9 +15,8 @@ st.set_page_config(page_title="Cinnamo World", layout="centered")
 client = OpenAI(api_key=st.secrets.get("OPENAI_API_KEY", ""))
 
 CHILD_NAME = "도아"
-DATA_DIR = "data"
 ASSETS_DIR = "assets"
-os.makedirs(DATA_DIR, exist_ok=True)
+os.makedirs(ASSETS_DIR, exist_ok=True)
 
 # ==============================================
 # 🎨 감정별 배경 + 애니메이션
@@ -44,17 +42,12 @@ def set_emotion_bg(state: str):
         transition:background-color 0.8s ease;
         overflow:hidden;
     }}
-    *{{font-family:'Nunito','NanumSquareRound',sans-serif;}}
-
+    *{{font-family:'NanumSquareRound','Nunito',sans-serif;}}
     button[kind="primary"]{{
         background:#FFD6EC !important;color:#6B21A8 !important;
         border-radius:16px !important;font-weight:900 !important;
         box-shadow:0 4px 12px rgba(255,192,203,.35);
     }}
-    button[kind="primary"]:hover{{transform:scale(1.03);}}
-
-
-    /* 💫 애니메이션 */
     .emoji {{
         position:fixed;
         bottom:-40px;
@@ -78,8 +71,6 @@ def set_emotion_bg(state: str):
         50% {{transform:translateX(100px); opacity:0.8;}}
         100% {{transform:translateX(-100px); opacity:0.6;}}
     }}
-
-    /* 🎙️ 마이크 버튼 */
     .mic-btn {{
         width:120px; height:120px;
         background:#FFCCE5; border-radius:60px;
@@ -91,14 +82,13 @@ def set_emotion_bg(state: str):
     }}
     .mic-btn:hover {{ transform:scale(1.05); background:#FFBBDD; }}
     </style>
-
     <div class="emoji" style="left:20%">{symbol}</div>
     <div class="emoji" style="left:50%">{symbol}</div>
     <div class="emoji" style="left:80%">{symbol}</div>
     """, unsafe_allow_html=True)
 
 # ==============================================
-# 📦 유틸
+# 🔊 TTS + 음성 인식 + GPT 반응
 # ==============================================
 def tts_ko_bytes(text: str, slow: bool=False) -> bytes:
     t = gTTS(text=text, lang="ko", slow=slow)
@@ -127,14 +117,39 @@ def cinnamo_speak(prompt: str) -> str:
     return rsp.output_text.strip()
 
 # ==============================================
+# 👄 입 움직임 애니메이션
+# ==============================================
+def cinnamo_speaking_animation(state: str, duration: float = 3.5):
+    """시나모가 말할 때 입을 여닫는 효과"""
+    normal_img = os.path.join(ASSETS_DIR, f"character_{state}.png")
+    speak_img = os.path.join(ASSETS_DIR, f"character_{state}_speaking.png")
+
+    if not os.path.exists(speak_img):
+        st.image(normal_img, width=320)
+        return
+
+    end = time.time() + duration
+    ph = st.empty()
+    while time.time() < end:
+        ph.image(speak_img, width=320)
+        time.sleep(0.2)
+        ph.image(normal_img, width=320)
+        time.sleep(0.25)
+    ph.image(normal_img, width=320)
+
+# ==============================================
 # 🩵 메인 모드
 # ==============================================
 def main_mode():
-    if "char_state" not in st.session_state: st.session_state.char_state = "normal"
-    if "last_msg" not in st.session_state: st.session_state.last_msg = "안녕 도아! 나랑 이야기해볼래?"
-    if "auto_mode" not in st.session_state: st.session_state.auto_mode = True
-    if "loop_stage" not in st.session_state: st.session_state.loop_stage = "init"
+    if "char_state" not in st.session_state:
+        st.session_state.char_state = "normal"
+    if "last_msg" not in st.session_state:
+        st.session_state.last_msg = "안녕 도아! 나랑 이야기해볼래?"
+    if "loop_stage" not in st.session_state:
+        st.session_state.loop_stage = "init"
+
     set_emotion_bg(st.session_state.char_state)
+    state = st.session_state.char_state
 
     char_map = {
         "normal": "character_normal.png",
@@ -142,10 +157,9 @@ def main_mode():
         "surprised": "character_surprised.png"
     }
 
-    # 캐릭터 + 대화 표시
     st.markdown(f"""
     <div style='text-align:center;'>
-      <img src='assets/{char_map[st.session_state.char_state]}' width='320'>
+      <img src='assets/{char_map[state]}' width='320'>
       <div style='font-size:22px; background:white; border-radius:20px;
            display:inline-block; padding:14px 24px; box-shadow:0 4px 10px rgba(0,0,0,.1);'>
         💬 {st.session_state.last_msg}
@@ -153,56 +167,54 @@ def main_mode():
     </div>
     """, unsafe_allow_html=True)
 
-    # 시나모가 먼저 말 걸기 (루프 시작)
     if st.session_state.loop_stage == "init":
-        msg = "도아야~ 오늘은 어떤 기분이야? 시나모한테 말해볼래?"
+        msg = "도아야~ 오늘 기분은 어때? 시나모한테 말해볼래?"
         st.session_state.last_msg = msg
         st.session_state.loop_stage = "listen"
+        with st.empty():
+            cinnamo_speaking_animation("normal", 3.5)
         st.audio(tts_ko_bytes(msg, slow=True), format="audio/mp3")
 
     st.markdown("---")
     st.markdown("<h3 style='text-align:center;'>🎙️ 시나모에게 말해보기</h3>", unsafe_allow_html=True)
-    audio = st.audio_input("")
-
-    # 🎙️ 마이크 버튼 표시
     st.markdown("<div class='mic-btn'>🎤</div>", unsafe_allow_html=True)
+    audio = st.audio_input("")
 
     if st.button("▶️ 시나모에게 보내기", use_container_width=True):
         if not audio:
-            st.warning("먼저 마이크로 도아의 말을 녹음해줘 ☁️")
+            st.warning("먼저 도아의 말을 녹음해줘 ☁️")
         else:
             text = transcribe_audio(audio.getvalue())
             fb = cinnamo_speak(f"{CHILD_NAME}가 '{text}' 라고 말했어. 그에 다정하게 반응해줘.")
 
-            # 감정 분석
             if any(x in fb for x in ["좋아요","멋져요","행복","사랑","기뻐"]):
-                st.session_state.char_state = "happy"
+                state = "happy"
             elif any(x in fb for x in ["놀랐","깜짝","우와","헉"]):
-                st.session_state.char_state = "surprised"
+                state = "surprised"
             else:
-                st.session_state.char_state = "normal"
-            set_emotion_bg(st.session_state.char_state)
+                state = "normal"
+            st.session_state.char_state = state
 
-            # 시나모 대답 표시 + 음성 출력
-            st.session_state.last_msg = fb
+            set_emotion_bg(state)
+
+            with st.empty():
+                cinnamo_speaking_animation(state, 3.5)
+            st.audio(tts_ko_bytes(fb, slow=True), format="audio/mp3")
+
+            nxt = cinnamo_speak(f"다음으로 {CHILD_NAME}에게 귀여운 질문 하나 만들어줘. 짧고 따뜻하게 1문장으로.")
+            st.session_state.last_msg = nxt
+            with st.empty():
+                cinnamo_speaking_animation(state, 3.5)
+            st.audio(tts_ko_bytes(nxt, slow=True), format="audio/mp3")
+
             st.markdown(f"""
-            <div style='text-align:center;'>
-              <img src='assets/{char_map[st.session_state.char_state]}' width='320'>
+            <div style='text-align:center; margin-top:10px;'>
               <div style='font-size:22px; background:white; border-radius:20px;
                    display:inline-block; padding:14px 24px; box-shadow:0 4px 10px rgba(0,0,0,.1);'>
-                💬 {fb}
+                💬 {nxt}
               </div>
             </div>
             """, unsafe_allow_html=True)
-            st.audio(tts_ko_bytes(fb, slow=True), format="audio/mp3")
-
-            # 다음 질문 자동 생성 (루프 지속)
-            nxt = cinnamo_speak(f"다음으로 {CHILD_NAME}에게 물어볼 귀여운 질문 하나 만들어줘. "
-                                "짧고 따뜻하게, 1문장으로 말해.")
-            st.session_state.last_msg = nxt
-            st.session_state.loop_stage = "listen"
-            st.audio(tts_ko_bytes(nxt, slow=True), format="audio/mp3")
-            st.rerun()
 
 # ==============================================
 # 🚀 실행
