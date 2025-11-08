@@ -77,7 +77,7 @@ def set_emotion_bg(state: str):
 # ==============================================
 # 🔊 OpenAI TTS (부드러운 시나모 음성)
 # ==============================================
-def tts_ko_bytes(text: str, voice="soft") -> bytes:
+def tts_ko_bytes(text: str, voice="verse") -> bytes:
     """
     OpenAI TTS - 자연스럽고 따뜻한 시나모 목소리
     voice: 'soft', 'warm', 'verse', 'alloy'
